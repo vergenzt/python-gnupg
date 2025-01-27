@@ -39,6 +39,7 @@ from email.utils import parseaddr
 from io import StringIO
 import logging
 import os
+from queue import Queue
 import re
 import socket
 from subprocess import Popen, PIPE
@@ -2213,6 +2214,40 @@ class GPG(object):
         self._handle_io(args, fileobj_or_path, result, passphrase, binary=True)
         # logger.debug('decrypt result[:100]: %r', result.data[:100])
         return result
+
+    def decrypt_file_iter(self, fileobj_or_path, **kwargs):
+        orig_on_data = self.on_data
+        chunks_queue = Queue(maxsize=1)
+        def _on_data(chunk):
+            chunks_queue.put(chunk)
+            return orig_on_data(chunk) if orig_on_data else False
+
+        self.on_data = _on_data
+        try:
+
+            result_queue = Queue(maxsize=1)
+            def decrypt_in_thread():
+                try:
+                    result = self.decrypt_file(fileobj_or_path, **kwargs)
+                    result_queue.put(result)
+                except Exception as exc:
+                    result_queue.put(exc)
+
+            decrypt_thread = threading.Thread(target=decrypt_in_thread)
+            decrypt_thread.start()
+
+            while result_queue.empty():
+                yield chunks_queue.get()
+
+            decrypt_thread.join()
+            result = result_queue.get()
+            if isinstance(result, Exception):
+                raise result
+            else:
+                return result
+
+        finally:
+            self.on_data = orig_on_data
 
     def get_recipients(self, message, **kwargs):
         """ Get the list of recipients for an encrypted message. This method delegates most of the work to
