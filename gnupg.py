@@ -2216,6 +2216,21 @@ class GPG(object):
         return result
 
     def decrypt_file_iter(self, fileobj_or_path, **kwargs):
+        """
+        Decrypt data in a file or file-like object iteratively, yielding chunks.
+
+        Args:
+            fileobj_or_path (str|file): A path to a file or a file-like object containing the data to be decrypted.
+
+            always_trust: Whether to always trust keys.
+
+            passphrase (str): The passphrase to use.
+
+            output (str): If specified, the path to write the decrypted data to.
+
+            extra_args (list[str]): A list of extra arguments to pass to `gpg`.
+        """
+
         orig_on_data = self.on_data
         chunks_queue = Queue(maxsize=1)
         def _on_data(chunk):
